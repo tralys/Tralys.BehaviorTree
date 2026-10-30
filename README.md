@@ -234,10 +234,14 @@ account of a node's scratch for one agent, and `ToDebugString(state)` prints it.
 
 ## Releasing
 
-Releases are cut by pushing a `v*` tag from `main`. The
-[`release` workflow](.github/workflows/release.yml) derives the package version from
-the tag (e.g. `v0.2.0` → `0.2.0`), runs the test suite, packs, and pushes to
-nuget.org. Tags containing `-` (e.g. `v0.2.0-beta.1`) are published as prereleases.
+Releases are cut by pushing a `v*` tag from `main`, once `CHANGELOG.md` has a section
+for that version. The [`release` workflow](.github/workflows/release.yml) derives the
+package version from the tag (e.g. `v0.2.0` → `0.2.0`), runs the
+[`ci` workflow](.github/workflows/ci.yml)'s build, tests and pack at that version,
+pushes to nuget.org through trusted publishing from the `nuget` environment, and
+creates a GitHub Release whose notes are the changelog section. Tags containing `-`
+(e.g. `v0.2.0-beta.1`) are published as prereleases. A manual run builds any version
+and pushes only when asked to.
 
 ```sh
 git tag v0.2.0
