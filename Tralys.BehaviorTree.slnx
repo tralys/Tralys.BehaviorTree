@@ -1,0 +1,11 @@
+<Solution>
+  <Folder Name="/bench/">
+    <Project Path="bench/Tralys.BehaviorTree.Bench/Tralys.BehaviorTree.Bench.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/Tralys.BehaviorTree/Tralys.BehaviorTree.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Tralys.BehaviorTree.Tests/Tralys.BehaviorTree.Tests.csproj" />
+  </Folder>
+</Solution>

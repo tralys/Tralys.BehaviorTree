@@ -1,12 +1,12 @@
-# FlatTree
+# Tralys.BehaviorTree
 
-A zero/low-allocation Behaviour Tree library for C# (`net10.0`), designed for game
-servers running hundreds–thousands of AI agents.
+A zero/low-allocation behavior tree library for C# (`net10.0`), designed for game
+servers running hundreds–thousands of AI agents. Formerly published as `FlatTree`.
 
 ## Install
 
 ```sh
-dotnet add package FlatTree
+dotnet add package Tralys.BehaviorTree
 ```
 
 ## Why
@@ -43,7 +43,7 @@ a delegate closing over per-agent state would leak that agent's state to all oth
 ```csharp
 BtFactory<Ctx> n = Bt.For<Ctx>(/* optional IRandomProvider */);
 
-BehaviourTree<Ctx> tree = n.Build(
+BehaviorTree<Ctx> tree = n.Build(
     n.PrioritySelector("root",
         n.Sequence("enrage",
             n.Condition("hp<20%", static (in Ctx c) => c.Hp < c.MaxHp / 5),
@@ -200,7 +200,7 @@ Because of that, `pool.Return(slot, ctx)` uses the ordinary `Reset`. Reach for
 | `Cooldown` timer, `RateLimiter` interval and cached verdict | **kept** — they describe what the agent did, so preemption cannot refund them |
 
 So a preempted branch cannot dodge its cooldown by being interrupted. For an agent that should start
-with no history at all, take a fresh `NewState()` or a recycled `BehaviourTreePool` slot rather than
+with no history at all, take a fresh `NewState()` or a recycled `BehaviorTreePool` slot rather than
 calling `Reset`.
 
 With a pool, reset *before* returning a slot if a node may still hold a resource — `Rent` zeroes the
@@ -228,9 +228,9 @@ account of a node's scratch for one agent, and `ToDebugString(state)` prints it.
 
 ## Layout
 
-- `src/FlatTree` — the library (no references).
-- `tests/FlatTree.Tests` — TUnit + Shouldly test suite.
-- `bench/FlatTree.Bench` — BenchmarkDotNet allocation + throughput benchmarks.
+- `src/Tralys.BehaviorTree` — the library (no references).
+- `tests/Tralys.BehaviorTree.Tests` — TUnit + Shouldly test suite.
+- `bench/Tralys.BehaviorTree.Bench` — BenchmarkDotNet allocation + throughput benchmarks.
 
 ## Releasing
 
