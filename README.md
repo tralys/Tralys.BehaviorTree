@@ -1,6 +1,6 @@
 # Tralys.BehaviorTree
 
-A zero/low-allocation behavior tree library for C# (`net10.0`), designed for game
+A zero/low-allocation behavior tree library for C# (`net11.0`), designed for game
 servers running hundreds–thousands of AI agents. Formerly published as `FlatTree`.
 
 ## Install
@@ -213,7 +213,7 @@ pool.Return(slot);        // frees only — for agents that hold nothing
 
 ## Design constraints
 
-- `net10.0`, `Nullable`, `TreatWarningsAsErrors`. Zero project dependencies.
+- `net11.0`, `Nullable`, `TreatWarningsAsErrors`. Zero project dependencies.
 - Single-threaded — no locks, no thread-safety.
 - No wall-clock — time comes only from the context (`IClock.NowMs`), which makes the tree
   deterministically testable.
