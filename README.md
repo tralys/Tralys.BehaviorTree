@@ -1,47 +1,30 @@
 # Tralys.BehaviorTree
 
-A zero/low-allocation behavior tree library for C# (`net11.0`), designed for game
-servers running hundreds–thousands of AI agents. Formerly published as `FlatTree`.
+A behavior tree library for C# game servers that run thousands of agents. The tree definition is immutable and
+shared by every agent of its type. Each agent's state is one compact array. **A tick allocates nothing.**
 
-## Install
+It replaces the deprecated `FlatTree` package.
 
 ```sh
 dotnet add package Tralys.BehaviorTree
 ```
 
-## Why
-
-The natural fit for AI decision-making (wandering bots, multi-phase bosses) is a
-Behaviour Tree. Classic implementations heap-allocate **one node object per node per
-agent**, use per-node `IDisposable`, and throw exceptions for control flow. At MMO scale
-(one tree per agent) that is a huge per-agent object graph and constant GC churn.
-
-**Core idea:** separate the *immutable, shared* tree definition from *per-agent mutable*
-state.
-
-- Build **one** tree per archetype (boss type / bot type) **once** at startup; share that
-  single tree across every agent of that type.
-- Per-agent state is a single compact `NodeState[]`, indexed by node id.
-- Ticking touches only that array + a stack-only context. **Zero per-tick allocation.**
-
 ## Allocation profile
 
 | Scope | Allocation |
 |---|---|
-| per-archetype | 1 tree, built once at startup, shared by ALL agents of that type |
-| per-agent activation | 1 `NodeState[]` (`new NodeState[NodeCount]`, 16 B/node) |
-| per-tick | **0 bytes** (no LINQ / closures / enumerators / boxing on the hot path; `RandomSelector` and `WeightedSelector` draw their order into `stackalloc`) |
+| Per archetype | One tree, built once at startup and shared by every agent of that type |
+| Per agent | One `NodeState[]`, 16 B per node |
+| Per tick | 0 B. Random orderings draw into `stackalloc`. |
 
-This holds because (a) the nested-factory node construction runs at **build time** (once
-per archetype), not per agent or per tick; and (b) leaf delegates **capture nothing**
-(`static` lambdas / method groups) so the compiler caches one shared instance. Capturing is
-also a **correctness** rule, not just an allocation one: one node is shared by every agent, so
-a delegate closing over per-agent state would leak that agent's state to all others.
+Node construction runs once per archetype, at build time. Leaf delegates must capture nothing (use `static` lambdas
+or method groups). That rule is about correctness as well as allocation: a node is shared by every agent, so a
+closure over one agent's state would leak it to all of them.
 
-## Authoring — nested factory
+## Authoring
 
 ```csharp
-BtFactory<Ctx> n = Bt.For<Ctx>(/* optional IRandomProvider */);
+BtFactory<Ctx> n = Bt.For<Ctx>();
 
 BehaviorTree<Ctx> tree = n.Build(
     n.PrioritySelector("root",
@@ -55,198 +38,125 @@ BehaviorTree<Ctx> tree = n.Build(
             n.Do("strike", Actions.Strike)),
         n.Do("idle", Actions.Idle)));
 
-// per agent:
-NodeState[] state = tree.NewState();
-
-// per tick (0 B):
-TickResult result = tree.Tick(state, new Ctx(blackboard, nowMs));
+NodeState[] state = tree.NewState();                        // per agent
+TickResult result = tree.Tick(state, new Ctx(board, nowMs)); // per tick, 0 B
 ```
 
-`Ctx` is any `readonly struct` (or class) implementing `IClock` (`long NowMs { get; }`).
-Reusable subtrees are just methods returning `BtNode<Ctx>`.
+### The context
 
-- **Names are optional.** Every node method has a name-less overload (`n.Selector(...)`);
-  the name is for debugging/inspection only and defaults to the node type.
-- **Durations are `TimeSpan`** (`Wait`, `WaitUntil`, `Cooldown`, `RateLimiter`, `TimeLimit`).
-  A `WaitUntil` timeout of `TimeSpan.Zero` waits forever, so it takes no `onTimeout` handler.
-- **`Do`/`Condition` delegates return `TickResult`** (`Running`/`Success`/`Failure`) and `bool`
-  respectively, and must capture nothing. They take the context by `in`, so a lambda has to spell
-  out the modifier: `static (in c) => ...`. A `Do` overload taking
-  `(in Ctx, ref int cursor, ref long stamp)` exposes the node's per-agent scratch for
-  multi-tick actions; that scratch is cleared on reset, so an aborted action restarts rather than
-  resuming mid-flight.
-- **Per-site data goes in state, not a closure.** `Condition`, `Do`, `Catch`, `OnComplete` and
-  `WaitUntil` each take a `state` that the delegate receives by `in`:
-  `n.Condition("armed", Gate.Ready, static (in c, in gate) => c.Is(gate))`. Every agent shares that
-  state, like the node itself, so keep it immutable.
-- **Deterministic randomness:** pass `Bt.For<Ctx>(new SeededRandomProvider(seed))` to make
-  `RandomSelector`/`RandomSequence`/`WeightedSelector` orderings and `Chance` rolls reproducible.
-- **Weighted picks:** `n.WeightedSelector((3, n.Do(Actions.Meteor)), (1, n.Do(Actions.Burn)))` tries
-  the meteor first three times as often as the burn; a child that fails falls through to the next
-  weighted draw among the rest. Weights are positive integers and the draw uses integer arithmetic
-  only, so a seed replays the same order on every platform.
-- **Custom nodes:** subclass `BtNode<Ctx>`/`LeafNode<Ctx>`/`CompositeNode<Ctx>`/
-  `DecoratorNode<Ctx>`; override the `protected` child-traversal hooks and your children are
-  wired up by `Build`. `PollingLeaf<Ctx>` is the base for a leaf that starts work once and polls
-  it to completion, with an optional deadline.
+- `Ctx` is any struct or class that implements `IClock` (`long NowMs { get; }`).
+- Time comes only from the context, so a tree is deterministic under test.
+
+### Leaves and node arguments
+
+- `Do` returns `TickResult` and `Condition` returns `bool`.
+- Both take the context by `in`, so a lambda spells out `static (in c) => ...`.
+- Per-site data goes in a `state` argument, not a closure: `n.Condition("armed", Gate.Ready, static (in c, in g) => c.Is(g))`.
+  Every agent shares that state, so keep it immutable.
+- The `Do` overload taking `(in Ctx, ref int cursor, ref long stamp)` exposes per-agent scratch for multi-tick
+  actions. A reset clears that scratch.
+- Names are optional and only for debugging.
+- Durations are `TimeSpan`.
+- `Bt.For<Ctx>(new SeededRandomProvider(seed))` makes random orderings and `Chance` rolls reproducible on every
+  platform.
+
+### Reuse and custom nodes
+
+- A reusable subtree is a method that returns `BtNode<Ctx>`.
+- For a custom node, subclass `LeafNode<Ctx>`, `CompositeNode<Ctx>` or `DecoratorNode<Ctx>`.
+- `PollingLeaf<Ctx>` starts work once and polls it to completion, with an optional deadline.
 
 ## Nodes
 
-- **Composites:** `Selector`, `Sequence`, `PrioritySelector`, `PrioritySequence`,
-  `RandomSelector`, `RandomSequence`, `WeightedSelector` (a `RandomSelector` with a weight per
-  child), `SimpleParallel` (runs up to 16 children in parallel), `If` / `ReactiveIf` (a real
-  if/then/else: a failing `then` never falls back to `else`).
-- **Decorators:** `Inverter`, `AlwaysSucceed`, `AlwaysFail`, `AutoReset`, `UntilSuccess`,
-  `UntilFailed`, `Repeat`, `Retry`, `Forever`, `While`, `ForEach`, `Catch`, `OnComplete`,
-  `Cooldown`, `RateLimiter`, `TimeLimit`, `Chance`.
-- **Leaves:** `Do`, `Act` (an effect that always succeeds), `Condition`, `Wait`, `WaitUntil`.
-
-### Reactive vs resuming composites
-
-This is the easiest thing to get wrong at authoring time:
-
-| | while a child is `Running` |
+| Kind | Nodes |
 |---|---|
-| `Selector` / `Sequence` | resume at the stored `Cursor`. Earlier children are **not** re-ticked, so a higher-priority guard is **not** re-evaluated. |
-| `PrioritySelector` / `PrioritySequence` | re-tick from child 0 every tick, and recursively `Reset` every lower-priority child once a higher-priority one takes over. |
-| `If` / `ReactiveIf` | `If` reads its condition once and runs the branch it chose; `ReactiveIf` reads it every tick and resets the running branch when the answer changes. |
+| Composites | `Selector`, `Sequence`, `PrioritySelector`, `PrioritySequence`, `RandomSelector`, `RandomSequence`, `WeightedSelector`, `SimpleParallel` (up to 16 children), `If`, `ReactiveIf` |
+| Decorators | `Inverter`, `AlwaysSucceed`, `AlwaysFail`, `AutoReset`, `UntilSuccess`, `UntilFailed`, `Repeat`, `Retry`, `Forever`, `While`, `ForEach`, `Catch`, `OnComplete`, `Cooldown`, `RateLimiter`, `TimeLimit`, `Chance` |
+| Leaves | `Do`, `Act`, `Condition`, `Wait`, `WaitUntil` |
 
-Use a priority composite wherever a guard must be able to interrupt a running branch. Use the
-plain ones where a started branch should be allowed to finish.
+## Reactive vs resuming composites
 
-Because a priority composite re-ticks from child 0 every tick, a **self-re-arming leaf** (`Wait`, and
-`Do` with the scratch overload) should not be a non-final child of one. It clears its progress on
-success, so it reports Success on one tick and then restarts and reports Running on the next, which
-resets everything behind it. Anything that finishes inside that single Success tick still runs, but
-**multi-tick work behind it never accumulates the ticks it needs**. Put the tail under a `Sequence`,
-which resumes from its cursor:
+How a composite behaves while one of its children is `Running`:
+
+| Composite | While a child is `Running` |
+|---|---|
+| `Selector` / `Sequence` | Resumes at its cursor. Earlier guards are **not** re-evaluated. |
+| `PrioritySelector` / `PrioritySequence` | Re-ticks from child 0 every tick, and resets lower-priority children when a higher one takes over. |
+| `If` / `ReactiveIf` | `If` reads its condition once. `ReactiveIf` reads it every tick and resets the running branch when the answer changes. |
+
+Use a priority composite where a guard must interrupt a running branch.
+
+Don't put a self-re-arming leaf (`Wait`, or a scratch `Do`) as a non-final child of a priority composite. It reports
+Success, then restarts on the next tick, which resets everything behind it, so multi-tick work behind it never
+finishes. Wrap the tail in a `Sequence`:
 
 ```csharp
-// `channel` is reset every time it gets going, so it never completes
-n.PrioritySequence("attack", n.Condition("has-target", ...), n.Wait("wind-up", ...), n.Do("channel", ...))
-
-// correct: the guard stays reactive, the timed branch is allowed to progress
 n.PrioritySequence("attack",
     n.Condition("has-target", ...),
     n.Sequence("swing", n.Wait("wind-up", ...), n.Do("channel", ...)))
 ```
 
-### Aborting safely
+## Reset, abort and recovery
 
-`Reset` is the library's only abort notification, and it takes the context:
+### Reset
 
-```csharp
-protected override void DoReset(Span<NodeState> s, in Ctx ctx) { /* release what you acquired */ }
-protected override void OnTerminate(Span<NodeState> s, TickResult status, in Ctx ctx) { }
-```
+- `Reset` is the only abort notification. A preempted node hears it through `DoReset(state, in ctx)` and releases
+  what it acquired.
+- `Reset` skips `Fresh` nodes, so an untouched branch costs nothing.
+- `Reset` rewinds traversal, not history:
 
-A node preempted by a `PrioritySelector` learns of it through `DoReset` and can undo externally
-visible work. `Reset` skips `Fresh` nodes, so an untouched branch costs nothing.
-
-When a subtree must *never* be torn down mid-flight — an irreversible commit, a distributed
-rendezvous — mark it and let `Build` enforce it:
-
-```csharp
-n.Uninterruptible(n.Sequence("commit", ...))
-```
-
-`Build` throws if such a node is reachable beneath anything that tears down a running child —
-`PrioritySelector`, `PrioritySequence`, `SimpleParallel`, `TimeLimit`, or a custom node that
-overrides `PreemptsRunningChildren`. The failure it prevents is silent, so it is a build-time error
-rather than a convention.
-
-### Recovering after an exception
-
-`Tick` writes a node's status only once `Update` returns, so a node whose `Update` throws keeps the
-status it had *before* that tick. Where that status was `Fresh` — the first tick, or a branch just
-entered — the node reports `Fresh` over a subtree that is anything but, and `Reset` short-circuits
-above the mess. (After a throw on a later tick the ancestors are still `Running`, so `Reset` does
-cascade and recovers normally.) For the cases it cannot reach, `ResetAll` sweeps the flat node array
-instead of cascading:
-
-```csharp
-try { tree.Tick(state, ctx); }
-catch (Exception) { tree.ResetAll(state, ctx); }   // reaches the whole tree
-```
-
-`tree.TickOrRecover(state, ctx)` (and `pool.TickOrRecover(slot, ctx)`) runs that `ResetAll` for you
-and rethrows the tick's exception. If a cleanup throws as well, the two arrive together as one
-`AggregateException`, the tick's exception first.
-
-It keeps state a node deliberately holds across a reset (see the table below). It differs from
-`Reset` in two ways: no ancestor can hide a dirty subtree from it, **and it calls `DoReset` on every
-node — including ones that never ticked**, since a node that acquired and then threw leaves a slot
-that looks untouched. Cleanup hooks must therefore be idempotent and safe when nothing was acquired:
-
-```csharp
-protected override void DoReset(Span<NodeState> s, in Ctx ctx)
-{
-    if ((s[Id].Cursor & AcquiredFlag) == 0) { return; }   // nothing to release
-    s[Id].Cursor &= ~AcquiredFlag;
-    ctx.Release(...);
-}
-```
-
-Because of that, `pool.Return(slot, ctx)` uses the ordinary `Reset`. Reach for
-`pool.ResetAll(slot, ctx)` before returning a slot only when a tick actually threw.
-
-### What `Reset` clears
-
-`Reset` rewinds *traversal*, not the agent's history:
-
-| State | On `Reset` |
+| State | On reset |
 |---|---|
-| cursors, started flags, `Do` scratch, `Wait`/`TimeLimit` timers | cleared — they describe the activation being abandoned |
-| `Cooldown` timer, `RateLimiter` interval and cached verdict | **kept** — they describe what the agent did, so preemption cannot refund them |
+| Cursors, started flags, `Do` scratch, `Wait` and `TimeLimit` timers | Cleared |
+| `Cooldown` timer, `RateLimiter` interval and cached verdict | Kept, so preemption can't refund a cooldown |
 
-So a preempted branch cannot dodge its cooldown by being interrupted. For an agent that should start
-with no history at all, take a fresh `NewState()` or a recycled `BehaviorTreePool` slot rather than
-calling `Reset`.
+### Uninterruptible subtrees
 
-With a pool, reset *before* returning a slot if a node may still hold a resource — `Rent` zeroes the
-slot's memory without running any cleanup hook:
+- `n.Uninterruptible(...)` marks a subtree that must never be torn down mid-flight.
+- `Build` throws if such a subtree sits under anything that preempts a running child: a priority composite,
+  `SimpleParallel`, `TimeLimit`, `ReactiveIf`, or a custom node that overrides `PreemptsRunningChildren`.
 
-```csharp
-pool.Return(slot, ctx);   // resets (cleanup runs), then frees
-pool.Return(slot);        // frees only — for agents that hold nothing
-```
+### After an exception
 
-## Design constraints
+- A node whose `Update` throws keeps the status it had before that tick, so an ordinary `Reset` can miss the dirty
+  subtree.
+- `tree.TickOrRecover(state, ctx)` runs `ResetAll` and then rethrows. `ResetAll` sweeps every node and calls
+  `DoReset` even on nodes that never ticked, so cleanup hooks must be idempotent.
 
-- `net11.0`, `Nullable`, `TreatWarningsAsErrors`. Zero project dependencies.
-- Single-threaded — no locks, no thread-safety.
-- No wall-clock — time comes only from the context (`IClock.NowMs`), which makes the tree
-  deterministically testable.
+## Pooling and tracing
 
-## Tracing
+### `BehaviorTreePool<Ctx>`
 
-`tree.Tracer = myTracer` attaches an `IBtTracer<TContext>` that hears every node's tick result and
-every reset of a node that had ticked — `Running` as the previous status means it was torn down
-mid-flight. The tree is shared, so one tracer sees every agent; tell them apart through the
-context. Unset, it costs one null check per node tick. `BtNode.Describe(state)` gives a readable
-account of a node's scratch for one agent, and `ToDebugString(state)` prints it.
+- It holds many agents' state in one slab.
+- `Rent` gives you a slot. `Tick`, `TickOrRecover`, `Reset`, `ResetAll` and `StatusOf` all take that slot.
+- `Return(slot, ctx)` runs cleanup before it frees the slot.
+- `Return(slot)` only frees the slot. Use it only for agents that hold nothing.
 
-## Layout
+### Tracing
 
-- `src/Tralys.BehaviorTree` — the library (no references).
-- `tests/Tralys.BehaviorTree.Tests` — TUnit + Shouldly test suite.
-- `bench/Tralys.BehaviorTree.Bench` — BenchmarkDotNet allocation + throughput benchmarks.
+- `tree.Tracer = tracer` attaches an `IBtTracer<Ctx>`, which hears every tick result and every reset of a node that
+  had ticked.
+- The tree is shared, so one tracer sees every agent; tell them apart through the context.
+- Unset, the tracer costs one null check per node tick.
+- `node.Describe(state)` and `ToDebugString(state)` print one agent's scratch for a node.
 
-## Releasing
+## Constraints
 
-Releases are cut by pushing a `v*` tag from `main`, once `CHANGELOG.md` has a section
-for that version. The [`release` workflow](.github/workflows/release.yml) derives the
-package version from the tag (e.g. `v0.2.0` → `0.2.0`), runs the
-[`ci` workflow](.github/workflows/ci.yml)'s build, tests and pack at that version,
-pushes to nuget.org through trusted publishing from the `nuget` environment, and
-creates a GitHub Release whose notes are the changelog section. Tags containing `-`
-(e.g. `v0.2.0-beta.1`) are published as prereleases. A manual run builds any version
-and pushes only when asked to.
+- Targets `net11.0`, with no dependencies.
+- Single-threaded: a tree and its state take no locks.
+
+## Building and releasing
 
 ```sh
-git tag v0.2.0
-git push origin v0.2.0
+dotnet build Tralys.BehaviorTree.slnx
+dotnet run --project tests/Tralys.BehaviorTree.Tests -c Release
+dotnet run --project bench/Tralys.BehaviorTree.Bench -c Release
 ```
+
+To release, push a `v*` tag from `main` once `CHANGELOG.md` has a section for that version. The
+[`release` workflow](https://github.com/tralys/Tralys.BehaviorTree/blob/main/.github/workflows/release.yml) builds,
+tests, packs and publishes to nuget.org, then cuts a GitHub Release from that section. A tag containing `-` publishes
+a prerelease.
 
 ## License
 
