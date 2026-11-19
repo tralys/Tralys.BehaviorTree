@@ -16,9 +16,10 @@
     <RepositoryUrl>https://github.com/tralys/Tralys.BehaviorTree.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
 
-    <!-- License & README -->
+    <!-- License, README & icon -->
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageIcon>icon.png</PackageIcon>
 
     <!-- Ship XML docs so consumers get summaries in the IDE. CS1591 is off: the factory
          overloads are self-describing and documented on the node types they construct. -->
@@ -39,5 +40,6 @@
 
   <ItemGroup>
     <None Include="..\..\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\icon.png" Pack="true" PackagePath="\" />
   </ItemGroup>
 </Project>
