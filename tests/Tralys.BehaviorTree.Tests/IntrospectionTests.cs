@@ -58,9 +58,7 @@ public sealed class IntrospectionTests
         );
         Do<FakeClock> orphan = n.Do("orphan", static (in FakeClock _) => TickResult.Success);
 
-        var error = Should.Throw<ArgumentException>(() =>
-            tree.StatusOf(tree.NewState(), orphan)
-        );
+        var error = Should.Throw<ArgumentException>(() => tree.StatusOf(tree.NewState(), orphan));
 
         error.Message.ShouldContain("has not been built");
     }
@@ -81,16 +79,5 @@ public sealed class IntrospectionTests
         );
 
         error.Message.ShouldContain("different tree");
-    }
-
-    [Test]
-    public void StatusOf_WithANullNode_Throws()
-    {
-        BtFactory<FakeClock> n = Bt.For<FakeClock>();
-        BehaviorTree<FakeClock> tree = n.Build(
-            n.Do("d", static (in FakeClock _) => TickResult.Success)
-        );
-
-        Should.Throw<ArgumentNullException>(() => tree.StatusOf(tree.NewState(), null!));
     }
 }

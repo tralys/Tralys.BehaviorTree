@@ -10,13 +10,7 @@ namespace Tralys.BehaviorTree.Bench;
 [MemoryDiagnoser]
 public class AgentSpawnBenchmark
 {
-    private BehaviorTree<BenchContext> _tree = null!;
-
-    [GlobalSetup]
-    public void Setup()
-    {
-        _tree = BenchTrees.Boss();
-    }
+    private readonly BehaviorTree<BenchContext> _tree = BenchTrees.Boss();
 
     [Benchmark(Baseline = true)]
     public NodeState[] FlatNewState() => _tree.NewState();

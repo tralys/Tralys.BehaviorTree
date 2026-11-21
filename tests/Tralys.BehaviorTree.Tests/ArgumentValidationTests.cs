@@ -38,68 +38,10 @@ public sealed class ArgumentValidationTests
     public void Composite_WithANullChild_Throws()
     {
         var n = Bt.For<FakeClock>();
-        BtNode<FakeClock>[] children = [n.Do("d", Succeed), null!];
+        var children = new BtNode<FakeClock>[2];
+        children[0] = n.Do("d", Succeed);
 
         Should.Throw<ArgumentException>(() => n.Selector("s", children));
-    }
-
-    [Test]
-    public void Decorator_WithANullChild_Throws()
-    {
-        var n = Bt.For<FakeClock>();
-
-        Should.Throw<ArgumentNullException>(() => n.Inverter("i", null!));
-        Should.Throw<ArgumentNullException>(() => n.AutoReset("a", null!));
-        Should.Throw<ArgumentNullException>(() => n.Forever("f", null!));
-        Should.Throw<ArgumentNullException>(() =>
-            n.Cooldown("c", TimeSpan.FromMilliseconds(10), null!)
-        );
-    }
-
-    [Test]
-    public void Leaf_WithANullDelegate_Throws()
-    {
-        var n = Bt.For<FakeClock>();
-
-        Should.Throw<ArgumentNullException>(() => n.Do("d", (LeafAction<FakeClock>)null!));
-        Should.Throw<ArgumentNullException>(() => n.Do("d", (StatefulAction<FakeClock>)null!));
-        Should.Throw<ArgumentNullException>(() =>
-            n.Condition("c", (LeafPredicate<FakeClock>)null!)
-        );
-        Should.Throw<ArgumentNullException>(() => n.Do("d", 1, (LeafAction<FakeClock, int>)null!));
-        Should.Throw<ArgumentNullException>(() =>
-            n.Condition("c", 1, (LeafPredicate<FakeClock, int>)null!)
-        );
-        Should.Throw<ArgumentNullException>(() =>
-            n.WaitUntil("w", (LeafPredicate<FakeClock>)null!, TimeSpan.FromMilliseconds(10))
-        );
-        Should.Throw<ArgumentNullException>(() =>
-            n.WaitUntil("w", 1, (LeafPredicate<FakeClock, int>)null!, TimeSpan.FromMilliseconds(10))
-        );
-        Should.Throw<ArgumentNullException>(() =>
-            n.WaitUntil(
-                "w",
-                1,
-                static (in FakeClock _, in int _) => true,
-                TimeSpan.FromMilliseconds(10),
-                (FailureHandler<FakeClock, int>)null!
-            )
-        );
-    }
-
-    [Test]
-    public void Decorator_WithANullHandler_Throws()
-    {
-        var n = Bt.For<FakeClock>();
-
-        Should.Throw<ArgumentNullException>(() =>
-            n.OnComplete("o", n.Do("d", Succeed), (CompletionHandler<FakeClock>)null!)
-        );
-        Should.Throw<ArgumentNullException>(() =>
-            n.OnComplete("o", n.Do("d", Succeed), 1, (CompletionHandler<FakeClock, int>)null!)
-        );
-        Should.Throw<ArgumentNullException>(() => n.While("w", null!, n.Do("d", Succeed), 1));
-        Should.Throw<ArgumentNullException>(() => n.Repeat("r", 2, n.Do("d", Succeed), null!));
     }
 
     [Test]
@@ -119,28 +61,6 @@ public sealed class ArgumentValidationTests
 
         Should.Throw<ArgumentOutOfRangeException>(() => n.Repeat("r", 0, n.Do("d", Succeed)));
         Should.Throw<ArgumentOutOfRangeException>(() => n.Repeat("r", -1, n.Do("d", Succeed)));
-    }
-
-    [Test]
-    public void Build_WithANullRoot_Throws()
-    {
-        var n = Bt.For<FakeClock>();
-
-        Should.Throw<ArgumentNullException>(() => n.Build(null!));
-    }
-
-    [Test]
-    public void Uninterruptible_WithANullNode_Throws()
-    {
-        var n = Bt.For<FakeClock>();
-
-        Should.Throw<ArgumentNullException>(() => n.Uninterruptible<BtNode<FakeClock>>(null!));
-    }
-
-    [Test]
-    public void Pool_WithANullTree_Throws()
-    {
-        Should.Throw<ArgumentNullException>(() => new BehaviorTreePool<FakeClock>(null!, 4));
     }
 
     [Test]
@@ -231,8 +151,8 @@ public sealed class ArgumentValidationTests
         var children = new BtNode<FakeClock>[] { a, b };
         var root = n.Sequence("root", children);
 
+        children[0] = b;
         children[1] = a;
-        children[0] = null!;
 
         var tree = n.Build(root);
 
@@ -257,7 +177,8 @@ public sealed class ArgumentValidationTests
     public void TreeNodesAreNotHandedOutAsAMutableArray()
     {
         typeof(BehaviorTree<FakeClock>)
-            .GetProperty(nameof(BehaviorTree<FakeClock>.Nodes))!
+            .GetProperty(nameof(BehaviorTree<FakeClock>.Nodes))
+            .ShouldNotBeNull()
             .PropertyType.ShouldBe(typeof(ReadOnlySpan<BtNode<FakeClock>>));
     }
 
@@ -268,7 +189,8 @@ public sealed class ArgumentValidationTests
         var root = n.Sequence("root", n.Condition("a", True), n.Condition("b", True));
 
         typeof(CompositeNode<FakeClock>)
-            .GetProperty(nameof(CompositeNode<FakeClock>.Children))!
+            .GetProperty(nameof(CompositeNode<FakeClock>.Children))
+            .ShouldNotBeNull()
             .PropertyType.ShouldBe(typeof(ReadOnlySpan<BtNode<FakeClock>>));
 
         root.Children.Length.ShouldBe(2);

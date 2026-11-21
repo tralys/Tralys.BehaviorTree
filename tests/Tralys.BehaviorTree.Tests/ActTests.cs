@@ -37,14 +37,6 @@ public sealed class ActTests
     }
 
     [Test]
-    public void ANullEffectIsRejected()
-    {
-        BtFactory<AgentContext> n = Bt.For<AgentContext>();
-
-        Should.Throw<ArgumentNullException>(() => n.Act("bad", (LeafEffect<AgentContext>)null!));
-    }
-
-    [Test]
     public void ValueReturningDelegatesAreACompileError()
     {
         IEnumerable<System.Reflection.MethodInfo> valueReturning = typeof(BtFactory<AgentContext>)

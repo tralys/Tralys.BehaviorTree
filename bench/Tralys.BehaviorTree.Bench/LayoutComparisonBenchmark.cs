@@ -27,16 +27,14 @@ public class LayoutComparisonBenchmark
     [Params(1000, 50_000)]
     public int AgentCount { get; set; }
 
-    private BehaviorTree<BenchContext> _tree = null!;
-    private NodeState[][] _flatAgents = null!;
-    private NaiveNode[] _naiveAgents = null!;
+    private readonly BehaviorTree<BenchContext> _tree = BenchTrees.Boss();
+    private NodeState[][] _flatAgents = [];
+    private NaiveNode[] _naiveAgents = [];
     private long _now;
 
     [GlobalSetup]
     public void Setup()
     {
-        _tree = BenchTrees.Boss();
-
         // The two populations MUST be allocated in separate loops. Interleaving them separates each
         // 160 B state array by ~496 B of naive node objects, which costs the flat layout its
         // sequential prefetch (~28% at 50k agents) while barely touching the pointer-chasing side.

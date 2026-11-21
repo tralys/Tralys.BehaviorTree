@@ -1,8 +1,8 @@
 namespace Tralys.BehaviorTree.Bench;
 
 /// <summary>
-/// The allocation contract with consumers. Both trees allocate their agent state once in
-/// <see cref="Setup"/>, then tick. The <c>[MemoryDiagnoser]</c> "Allocated" column must read
+/// The allocation contract with consumers. Both trees allocate their agent state once, on
+/// construction, then tick. The <c>[MemoryDiagnoser]</c> "Allocated" column must read
 /// <b>0 B</b> for every case — the per-tick hot path is allocation-free, including the
 /// <c>RandomSelector</c> and <c>WeightedSelector</c> <c>stackalloc</c> orders, the reset cascade,
 /// and abort-time teardown.
@@ -10,20 +10,18 @@ namespace Tralys.BehaviorTree.Bench;
 [MemoryDiagnoser]
 public class TickAllocationBenchmark
 {
-    private BehaviorTree<BenchContext> _everyNode = null!;
-    private BehaviorTree<BenchContext> _deepReactive = null!;
-    private NodeState[] _everyNodeState = null!;
-    private NodeState[] _deepReactiveState = null!;
+    private readonly BehaviorTree<BenchContext> _everyNode;
+    private readonly BehaviorTree<BenchContext> _deepReactive;
+    private readonly NodeState[] _everyNodeState;
+    private readonly NodeState[] _deepReactiveState;
     private long _now;
 
-    [GlobalSetup]
-    public void Setup()
+    public TickAllocationBenchmark()
     {
         _everyNode = BenchTrees.EveryNodeType();
         _everyNodeState = _everyNode.NewState();
         _deepReactive = BenchTrees.DeepReactive();
         _deepReactiveState = _deepReactive.NewState();
-        _now = 0;
     }
 
     [Benchmark]

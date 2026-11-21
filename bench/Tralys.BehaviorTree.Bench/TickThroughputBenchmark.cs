@@ -18,14 +18,13 @@ public class TickThroughputBenchmark
     [Params(100, 1000, 5000, 50_000)]
     public int AgentCount { get; set; }
 
-    private BehaviorTree<BenchContext> _tree = null!;
-    private NodeState[][] _agents = null!;
+    private readonly BehaviorTree<BenchContext> _tree = BenchTrees.Boss();
+    private NodeState[][] _agents = [];
     private long _now;
 
     [GlobalSetup]
     public void Setup()
     {
-        _tree = BenchTrees.Boss();
         _agents = new NodeState[AgentCount][];
         for (int i = 0; i < AgentCount; i++)
         {

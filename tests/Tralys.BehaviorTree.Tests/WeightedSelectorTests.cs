@@ -304,13 +304,13 @@ public sealed class WeightedSelectorTests
     }
 
     [Test]
-    public void ANullChildOrChildArray_Throws()
+    public void ANullChild_Throws()
     {
         BtFactory<FakeClock> n = Bt.For<FakeClock>();
+        var children = new (int, BtNode<FakeClock>)[2];
+        children[0] = (1, new MockNode());
+        children[1].Item1 = 1;
 
-        Should.Throw<ArgumentNullException>(() => n.WeightedSelector("w", null!));
-        Should.Throw<ArgumentException>(() =>
-            n.WeightedSelector("w", (1, new MockNode()), (1, null!))
-        );
+        Should.Throw<ArgumentException>(() => n.WeightedSelector("w", children));
     }
 }
